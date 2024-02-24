@@ -11,22 +11,24 @@ class PGNParser:
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
 
-    def parse_pgn(self):
+    @staticmethod
+    def parse_pgn(self, processing_queue) -> None:
         consecutive_non_tag_lines = 0
-        new_match = Match()
-        with open(self.file_path, "r") as pgn_file:
-            for line in pgn_file:
+        match_record = Match()
+        with open(self.file_path, "r") as pgn_reader:
+            for line in pgn_reader:
                 tag_match = TAG_REGEX.match(line)
                 if consecutive_non_tag_lines > 2:
                     print("create a new game\n")
                     consecutive_non_tag_lines = 0
-                    new_match = Match()
+                    match_record = Match()
                 if tag_match:
                     consecutive_non_tag_lines = 0
                     tag_name, tag_value = tag_match.groups()
-                    new_match.set_attribute(name=tag_name.lower(), value=tag_value)
+                    match_record.set_attribute(name=tag_name.lower(), value=tag_value)
                 elif len(move_match := MOVES_REGEX.findall(line)) > 0:
                     consecutive_non_tag_lines += 1
-                    new_match.set_attribute(name="gamemoves", value=move_match)
+                    match_record.set_attribute(name="gamemoves", value=move_match)
                 else:
                     consecutive_non_tag_lines += 1
+                    processing_queue.put(match_record)
