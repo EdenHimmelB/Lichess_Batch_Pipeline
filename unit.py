@@ -3,6 +3,30 @@ from typing import Optional
 
 
 class Match:
+    __slots__ = {
+        "_game_id",
+        "event",
+        "site",
+        "date",
+        "round",
+        "white",
+        "black",
+        "result",
+        "utcdate",
+        "utctime",
+        "whiteelo",
+        "blackelo",
+        "whiteratingdiff",
+        "blackratingdiff",
+        "whitetitle",
+        "blacktitle",
+        "eco",
+        "opening",
+        "timecontrol",
+        "termination",
+        "gamemoves",
+    }
+
     def __init__(
         self,
         #  game_id: Optional[str] = None,
@@ -51,24 +75,27 @@ class Match:
         self.gamemoves = gamemoves
 
     def __setattr__(self, name, value):
-        _allowed_attributes = {
-            '_game_id', 'event', 'site', 'date', 'round', 'white', 'black', 'result',
-            'utcdate', 'utctime', 'whiteelo', 'blackelo', 'whiteratingdiff', 'blackratingdiff',
-            'whitetitle', 'blacktitle', 'eco', 'opening', 'timecontrol', 'termination', 'gamemoves'
-        }
-        
-        if name == 'game_id':
+        """
+        Constraint a fixed schema/ list of attributes for a match.
+        """
+
+        if name == "game_id":
             raise AttributeError(f"game_id is immutable")
-        elif name not in _allowed_attributes:
-            raise AttributeError(f"Unable to change '{name}' attribute of class '{type(self).__name__}'")
+        elif name not in Match.__slots__:
+            raise AttributeError(
+                f"Unable to change '{name}' attribute of class '{type(self).__name__}'"
+            )
         else:
             # Use the super function to bypass this __setattr__ implementation
             # and actually set the attribute
             super().__setattr__(name, value)
 
+    def set_attribute(self, name, value):
+        self.__setattr__(name, value)
+
     @property
     def game_id(self) -> str:
         return self._game_id
-    
-class GameMoves:
-    pass
+
+    def __repr__(self) -> str:
+        return f"{self._game_id}"
