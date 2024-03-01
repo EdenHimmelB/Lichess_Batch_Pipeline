@@ -4,7 +4,7 @@ from processor import PGNParser, CSVWriter
 
 def main():
     processing_queue = JoinableQueue()
-    parser = PGNParser(file_path="data/small.pgn")
+    parser = PGNParser(file_path="data/small.pgn.zst")
     csv_writer = CSVWriter("data/small.csv")
 
     process_1 = Process(
