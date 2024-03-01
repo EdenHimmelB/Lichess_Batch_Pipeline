@@ -99,3 +99,6 @@ class Match:
 
     def __repr__(self) -> str:
         return f"{self._game_id}"
+    
+    def __eq__(self, __value: object) -> bool:
+        return self._game_id == __value
