@@ -1,9 +1,10 @@
-from unit import Match
 import re
+from multiprocessing import JoinableQueue
+from unit import Match
 
 TAG_REGEX = re.compile(r'\[(\w+)\s+"([^"]+)"\]')
 MOVES_REGEX = re.compile(
-    r"((?:\d+\.\s*)?(?:\d+\.\.\.\s*)?\S+)\s*\{\s*\[%clk\s+([0-9:]+)\]\s*\}"
+    r"(\S+)\s*\{\s*(?:\[%eval\s+(-?\d+\.{1}\d+?|#\d+)\]\s*)?(?:\[%clk\s+(\d+:\d+:\d+)\]\s*)\}"
 )
 
 
@@ -11,15 +12,14 @@ class PGNParser:
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
 
-    @staticmethod
-    def parse_pgn(self, processing_queue) -> None:
+    def parse_pgn(self, processing_queue: JoinableQueue) -> None:
         consecutive_non_tag_lines = 0
         match_record = Match()
         with open(self.file_path, "r") as pgn_reader:
             for line in pgn_reader:
                 tag_match = TAG_REGEX.match(line)
                 if consecutive_non_tag_lines > 2:
-                    print("create a new game\n")
+                    processing_queue.put(match_record)
                     consecutive_non_tag_lines = 0
                     match_record = Match()
                 if tag_match:
@@ -31,4 +31,4 @@ class PGNParser:
                     match_record.set_attribute(name="gamemoves", value=move_match)
                 else:
                     consecutive_non_tag_lines += 1
-                    processing_queue.put(match_record)
+        processing_queue.join()
