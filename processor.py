@@ -1,5 +1,7 @@
 import re
 import csv
+import subprocess
+
 from unit import Match
 from multiprocessing import JoinableQueue
 
@@ -17,22 +19,44 @@ class PGNParser:
     def parse_pgn(self, processing_queue: JoinableQueue) -> None:
         consecutive_non_tag_lines = 0
         match_record = Match()
-        with open(self.file_path, "r") as pgn_reader:
-            for line in pgn_reader:
-                tag_match = TAG_REGEX.match(line)
+
+        with subprocess.Popen(
+            ["pzstd", "-dc", self.file_path], stdout=subprocess.PIPE
+        ) as proc:
+            for line in proc.stdout:
+                decoded_line = line.decode()
+                tag_match = TAG_REGEX.match(decoded_line)
+
+                # If consecutive_non_tag_lines > 2, it means that 3 lines have been parsed
+                # (1 blank line, moves line/ result line, another blank line)
+                # which indicates an entirely different game has been reached.
                 if consecutive_non_tag_lines > 2:
                     processing_queue.put(match_record)
                     consecutive_non_tag_lines = 0
+                    previous_match_record = match_record
                     match_record = Match()
+
+                # This block indicates a tag line has been parsed
                 if tag_match:
                     consecutive_non_tag_lines = 0
                     tag_name, tag_value = tag_match.groups()
                     match_record.set_attribute(name=tag_name.lower(), value=tag_value)
-                elif len(move_match := MOVES_REGEX.findall(line)) > 0:
+
+                # This block indicates a moves line has been parsed
+                elif len(move_match := MOVES_REGEX.findall(decoded_line)) > 0:
                     consecutive_non_tag_lines += 1
                     match_record.set_attribute(name="gamemoves", value=move_match)
+
+                # This block indicates a blank line has been parsed
                 else:
                     consecutive_non_tag_lines += 1
+
+        # If the last match record is an incomplete record due to file partitioned,
+        # it would not be pushed.
+        # This block will push that last record to the processing queue.
+        if previous_match_record != match_record:
+            processing_queue.put(match_record)
+
         processing_queue.join()
 
 
