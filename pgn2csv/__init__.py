@@ -1,5 +1,5 @@
 from multiprocessing import JoinableQueue, Process
-from engine import PGNParser, CSVWriter
+from .engine import PGNParser, CSVWriter
 
 
 class Runner:

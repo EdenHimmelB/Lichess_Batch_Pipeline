@@ -2,7 +2,7 @@ import re
 import csv
 import subprocess
 
-from record import Match
+from .match import Match
 from multiprocessing import JoinableQueue
 
 
