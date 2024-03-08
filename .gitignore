@@ -1,1 +1,4 @@
-lichess_db_standard_rated_2024-01.pgn
+.venv/
+terraform/*
+airflow/config, logs, plugins
+*/__pycache__
