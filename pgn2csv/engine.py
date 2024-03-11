@@ -67,7 +67,7 @@ class CSVWriter:
 
     def write_csv(self, processing_queue: JoinableQueue):
         with open(self.csv_file_path, "w", newline="") as csv_file:
-            csv_writer = csv.writer(csv_file)
+            csv_writer = csv.writer(csv_file, quotechar='"', quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerow(
                 [
                     "GameID",
