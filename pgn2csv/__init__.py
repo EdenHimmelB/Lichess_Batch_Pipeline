@@ -2,9 +2,9 @@ from multiprocessing import JoinableQueue, Process
 from .engine import PGNParser, CSVWriter
 
 
-class Runner:
+class Converter:
     @staticmethod
-    def work(input_file_path: str, target_file_path: str):
+    def run(input_file_path: str, target_file_path: str):
         processing_queue = JoinableQueue()
         parser = PGNParser(input_file_path)
         csv_writer = CSVWriter(target_file_path)
