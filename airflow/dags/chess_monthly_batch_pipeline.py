@@ -1,13 +1,11 @@
-import os, sys
+import os, sys, subprocess
 
 sys.path.append(os.getcwd())
 
 from airflow import DAG
-from airflow.models import Variable
 from airflow.utils.dates import days_ago
 from airflow.operators.python import PythonOperator
 
-import pyarrow as pa
 import pyarrow.csv as pacsv
 import pyarrow.parquet as papq
 from pyarrow.fs import GcsFileSystem
@@ -15,10 +13,11 @@ from pyarrow.fs import GcsFileSystem
 import requests
 from tqdm import tqdm
 
-from pgn2csv import Runner
 
+def download_raw_data_to_local(url: str) -> str:
+    # uncompressed_file_name = url.split("/")[-1]
+    uncompressed_file_name = "test_run.pgn.zst"
 
-def download_raw_data_to_local(url, filename):
     # Send a GET request to the URL
     with requests.get(url, stream=True) as response:
         response.raise_for_status()
@@ -27,7 +26,7 @@ def download_raw_data_to_local(url, filename):
         block_size = 1024
 
         progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
-        with open(filename, "wb") as file:
+        with open(uncompressed_file_name, "wb") as file:
             for data in response.iter_content(block_size):
                 progress_bar.update(len(data))
                 file.write(data)
@@ -36,9 +35,17 @@ def download_raw_data_to_local(url, filename):
         if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
             print("ERROR, something went wrong")
 
+    # Push uncompressed file path to the next conversion step
+    return uncompressed_file_name
 
-def parse_raw_data_to_csv(input_path: str, output_path: str) -> None:
-    Runner.work(input_path, output_path)
+
+def convert_raw_data_to_csv(uncompressed_file_path: str) -> str:
+    parsed_file_path = uncompressed_file_path.split(".")[0] + ".csv"
+
+    print(os.listdir())
+    subprocess.run(["python3", "-m", "pgn2csv", uncompressed_file_path])
+
+    return parsed_file_path
 
 
 def partition_csv_file_to_parquet(
@@ -71,18 +78,26 @@ with DAG(
     download_task = PythonOperator(
         task_id="download_file",
         python_callable=download_raw_data_to_local,
+        op_kwargs={
+            "url": "https://drive.google.com/uc?export=download&id=1d7YF54Fij2yfXECZhQpF8jAB-98S99hi&filename=small.pgn.zst"
+        },
         provide_context=True,
     )
 
     parse_task = PythonOperator(
-        task_id="parse pgn to csv format",
-        python_callable=parse_raw_data_to_csv,
-        
+        task_id="convert_pgn_zst_to_csv_format",
+        python_callable=convert_raw_data_to_csv,
+        op_kwargs={
+            "uncompressed_file_path": "{{ ti.xcom_pull(task_ids='download_file') }}"
+        },
+        provide_context=True,
     )
 
-    upload_to_gcs_as_parquet_task = PythonOperator(
-        task_id="upload_to_gcs",
-        python_callable=partition_csv_file_to_parquet
-    )
+    # upload_to_gcs_as_parquet_task = PythonOperator(
+    #     task_id="upload_to_gcs",
+    #     python_callable=partition_csv_file_to_parquet,
+    #     op_kwargs={},
+    # )
 
-    download_task >> parse_task >> upload_to_gcs_as_parquet_task
+    download_task >> parse_task
+    # >> upload_to_gcs_as_parquet_task
