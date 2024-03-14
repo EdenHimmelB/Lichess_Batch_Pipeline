@@ -1,6 +1,7 @@
 import re
 import csv
 import subprocess
+from collections import deque
 
 from .match import Match
 from multiprocessing import JoinableQueue, Process
@@ -46,7 +47,10 @@ class PGNParser:
                 # This block indicates a moves line has been parsed
                 elif len(move_match := MOVES_REGEX.findall(decoded_line)) > 0:
                     self._consecutive_non_tag_lines += 1
-                    match_record.set_attribute(name="gamemoves", value=move_match)
+                    moves = deque()
+                    for move in move_match:
+                        moves.append({"moves": move[0], "eval": move[1], "time": move[2]})
+                    match_record.set_attribute(name="gamemoves", value=moves)
 
                 # This block indicates a blank line has been parsed
                 else:
