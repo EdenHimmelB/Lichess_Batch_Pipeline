@@ -7,8 +7,17 @@ from multiprocessing import JoinableQueue, Process
 
 
 TAG_REGEX = re.compile(r'\[(\w+)\s+"([^"]+)"\]')
-MOVES_REGEX = re.compile(
-    r"(\S+)\s*\{\s*(?:\[%eval\s+(-?\d+\.{1}\d+?|#\d+)\]\s*)?(?:\[%clk\s+(\d+:\d+:\d+)\]\s*)\}"
+COMPLEX_MOVES_REGEX = re.compile(
+    r"""
+    (\S+)\s*\{\s*(?:\[%eval\s+(-?\d+\.{1}\d+?|\#\d+)\]\s*)?(?:\[%clk\s+(\d+:\d+:\d+)\]\s*)\}
+    """,
+    re.VERBOSE
+)
+BASIC_MOVES_REGEX = re.compile(
+    r"""
+    [NBKRQ]?[a-h]?[1-8]?[\-x]?[a-h][1-8](?:=?[nbrqkNBRQK])?|[PNBRQK]?@[a-h][1-8]|--|Z0|0000|@@@@|O-O(?:-O)?|0-0(?:-0)?
+    """,
+    re.VERBOSE
 )
 
 
@@ -18,7 +27,7 @@ class PGNParser:
         self._consecutive_non_tag_lines = 0
 
     def parse_pgn(self, processing_queue: JoinableQueue) -> None:
-        
+
         match_record = Match()
 
         with subprocess.Popen(
@@ -26,7 +35,6 @@ class PGNParser:
         ) as proc:
             for line in proc.stdout:
                 decoded_line = line.decode()
-                tag_match = TAG_REGEX.match(decoded_line)
 
                 # If self._consecutive_non_tag_lines > 2, it means that 3 lines have been parsed
                 # (1 blank line, moves line/ result line, another blank line)
@@ -38,18 +46,29 @@ class PGNParser:
                     match_record = Match()
 
                 # This block indicates a tag line has been parsed
-                if tag_match:
+                if tag_match := TAG_REGEX.match(decoded_line):
                     self._consecutive_non_tag_lines = 0
                     tag_name, tag_value = tag_match.groups()
                     match_record.set_attribute(name=tag_name.lower(), value=tag_value)
 
-                # This block indicates a moves line has been parsed
-                elif move_match := MOVES_REGEX.findall(decoded_line):
+                # If not tag line, will next check if it's moves line with or without comments
+                elif move_match := COMPLEX_MOVES_REGEX.findall(decoded_line):
                     self._consecutive_non_tag_lines += 1
-                    moves = [{"move": move[0], "eval": move[1], "time": move[2]} for move in move_match]
+                    moves = [
+                        {"move": move[0], "eval": move[1], "time": move[2]}
+                        for move in move_match
+                    ]
                     match_record.set_attribute(name="gamemoves", value=moves)
 
-                # This block indicates a blank line has been parsed
+                elif move_match := BASIC_MOVES_REGEX.findall(decoded_line):
+                    self._consecutive_non_tag_lines += 1
+                    moves = [
+                        {"move": move}
+                        for move in move_match
+                    ]
+                    match_record.set_attribute(name="gamemoves", value=moves)
+                
+                # Empty line or else will proceed
                 else:
                     self._consecutive_non_tag_lines += 1
 
@@ -126,6 +145,7 @@ class CSVWriter:
                     ]
                 )
                 processing_queue.task_done()
+
 
 class Converter:
     @staticmethod
