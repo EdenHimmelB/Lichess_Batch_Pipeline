@@ -5,19 +5,20 @@ import subprocess
 from .match import Match
 from multiprocessing import JoinableQueue, Process
 
+from google.cloud import storage
 
 TAG_REGEX = re.compile(r'\[(\w+)\s+"([^"]+)"\]')
 COMPLEX_MOVES_REGEX = re.compile(
     r"""
     (\S+)\s*\{\s*(?:\[%eval\s+(-?\d+\.{1}\d+?|\#\d+)\]\s*)?(?:\[%clk\s+(\d+:\d+:\d+)\]\s*)\}
     """,
-    re.VERBOSE
+    re.VERBOSE,
 )
 BASIC_MOVES_REGEX = re.compile(
     r"""
     [NBKRQ]?[a-h]?[1-8]?[\-x]?[a-h][1-8](?:=?[nbrqkNBRQK])?|[PNBRQK]?@[a-h][1-8]|--|Z0|0000|@@@@|O-O(?:-O)?|0-0(?:-0)?
     """,
-    re.VERBOSE
+    re.VERBOSE,
 )
 
 
@@ -26,51 +27,61 @@ class PGNParser:
         self.file_path = file_path
         self._consecutive_non_tag_lines = 0
 
+        _bucket_name = self.file_path.split("/")[2]
+        _blob_name = "/".join(self.file_path.split("/")[3:])
+
+        self._storage_client = storage.Client()
+        self._bucket = self._storage_client.bucket(_bucket_name)
+        self._blob = self._bucket.blob(_blob_name)
+
     def parse_pgn(self, processing_queue: JoinableQueue) -> None:
-
+        previous_match_record = None
         match_record = Match()
+        content = self._blob.download_as_bytes()
 
-        with subprocess.Popen(
-            ["pzstd", "-dc", self.file_path], stdout=subprocess.PIPE
-        ) as proc:
-            for line in proc.stdout:
-                decoded_line = line.decode()
+        # Start the subprocess with stdin and stdout set to subprocess.PIPE
+        proc = subprocess.Popen(
+            ["pzstd", "-dc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
+        )
 
-                # If self._consecutive_non_tag_lines > 2, it means that 3 lines have been parsed
-                # (1 blank line, moves line/ result line, another blank line)
-                # which indicates an entirely different game has been reached.
-                if self._consecutive_non_tag_lines > 2:
-                    processing_queue.put(match_record)
-                    self._consecutive_non_tag_lines = 0
-                    previous_match_record = match_record
-                    match_record = Match()
+        # Write the content to the subprocess stdin and close stdin to signal that no more data will be sent
+        stdout_data, _ = proc.communicate(input=content)
 
-                # This block indicates a tag line has been parsed
-                if tag_match := TAG_REGEX.match(decoded_line):
-                    self._consecutive_non_tag_lines = 0
-                    tag_name, tag_value = tag_match.groups()
-                    match_record.set_attribute(name=tag_name.lower(), value=tag_value)
+        # Iterate through each line in the output
+        for line in stdout_data.splitlines():
+            decoded_line = line.decode()
+            # If self._consecutive_non_tag_lines > 2, it means that 3 lines have been parsed
+            # (1 blank line, moves line/ result line, another blank line)
+            # which indicates an entirely different game has been reached.
+            if self._consecutive_non_tag_lines > 2:
+                processing_queue.put(match_record)
+                self._consecutive_non_tag_lines = 0
+                previous_match_record = match_record
+                match_record = Match()
 
-                # If not tag line, will next check if it's moves line with or without comments
-                elif move_match := COMPLEX_MOVES_REGEX.findall(decoded_line):
-                    self._consecutive_non_tag_lines += 1
-                    moves = [
-                        {"move": move[0], "eval": move[1], "time": move[2]}
-                        for move in move_match
-                    ]
-                    match_record.set_attribute(name="gamemoves", value=moves)
+            # This block indicates a tag line has been parsed
+            if tag_match := TAG_REGEX.match(decoded_line):
+                self._consecutive_non_tag_lines = 0
+                tag_name, tag_value = tag_match.groups()
+                match_record.set_attribute(name=tag_name.lower(), value=tag_value)
 
-                elif move_match := BASIC_MOVES_REGEX.findall(decoded_line):
-                    self._consecutive_non_tag_lines += 1
-                    moves = [
-                        {"move": move}
-                        for move in move_match
-                    ]
-                    match_record.set_attribute(name="gamemoves", value=moves)
-                
-                # Empty line or else will proceed
-                else:
-                    self._consecutive_non_tag_lines += 1
+            # If not tag line, will next check if it's moves line with or without comments
+            elif move_match := COMPLEX_MOVES_REGEX.findall(decoded_line):
+                self._consecutive_non_tag_lines += 1
+                moves = [
+                    {"move": move[0], "eval": move[1], "time": move[2]}
+                    for move in move_match
+                ]
+                match_record.set_attribute(name="gamemoves", value=moves)
+
+            elif move_match := BASIC_MOVES_REGEX.findall(decoded_line):
+                self._consecutive_non_tag_lines += 1
+                moves = [{"move": move} for move in move_match]
+                match_record.set_attribute(name="gamemoves", value=moves)
+
+            # Empty line or else will proceed
+            else:
+                self._consecutive_non_tag_lines += 1
 
         # If the last match record is an incomplete record due to file partitioned,
         # it would not be pushed.
@@ -82,11 +93,18 @@ class PGNParser:
 
 
 class CSVWriter:
-    def __init__(self, csv_file_path: str) -> None:
-        self.csv_file_path = csv_file_path
+    def __init__(self, file_path: str) -> None:
+        self.file_path = file_path
+
+        _bucket_name = self.file_path.split("/")[2]
+        _blob_name = "/".join(self.file_path.split("/")[3:])
+
+        self._storage_client = storage.Client()
+        self._bucket = self._storage_client.bucket(_bucket_name)
+        self._blob = self._bucket.blob(_blob_name)
 
     def write_csv(self, processing_queue: JoinableQueue):
-        with open(self.csv_file_path, "w", newline="") as csv_file:
+        with self._blob.open("w", newline="", encoding="utf-8") as csv_file:
             csv_writer = csv.writer(csv_file, quotechar='"', quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerow(
                 [
