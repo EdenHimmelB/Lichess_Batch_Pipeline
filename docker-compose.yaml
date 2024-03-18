@@ -309,4 +309,4 @@ volumes:
 
 secrets:
   google_service_account:
-    file: "./google_credentials.json"
+    file: "./google_application_credentials.json"

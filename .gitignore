@@ -1,5 +1,8 @@
 .venv/
-terraform/*
+
+terraform/.terraform*
+terraform/*.tfstate*
+
 airflow/config, logs, plugins
 */__pycache__
 
@@ -8,5 +11,5 @@ airflow/logs/
 airflow/plugins/
 airflow/*/__pycache__
 
-.env
-.dockerignore
+# .env
+# .dockerignore
