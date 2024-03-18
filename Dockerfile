@@ -8,4 +8,4 @@ RUN apt-get update && \
     apt-get install -y zstd
 
 USER airflow
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt --no-cache-dir

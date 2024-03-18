@@ -113,6 +113,8 @@ services:
       retries: 50
       start_period: 30s
     restart: always
+    volumes:
+      - redis_data:/data
 
   airflow-init:
     <<: *airflow-common
@@ -302,7 +304,9 @@ services:
 volumes:
   postgres-db-volume:
   airflow-volume:
+  redis_data:
+    external: false
 
 secrets:
   google_service_account:
-    file: "./gcp_keys.json"
+    file: "./google_credentials.json"
