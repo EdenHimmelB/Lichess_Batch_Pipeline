@@ -27,6 +27,14 @@ resource "google_service_account" "my_service_account" {
   create_ignore_already_exists = true
 }
 
+# Grant role to service account
+resource "google_project_iam_member" "example" {
+  for_each = toset(var.service_account_roles)
+  project  = var.project
+  role     = each.key
+  member   = "serviceAccount:${google_service_account.my_service_account.email}"
+}
+
 # Enable a key for main service account.
 resource "google_service_account_key" "my_service_account_key" {
   service_account_id = google_service_account.my_service_account.name
@@ -36,7 +44,7 @@ resource "google_service_account_key" "my_service_account_key" {
 # Download the JSON key of service account to local machine.
 resource "local_sensitive_file" "foo" {
   content_base64 = google_service_account_key.my_service_account_key.private_key
-  filename = "../google_application_credentials.json"
+  filename       = "../google_application_credentials.json"
 }
 
 resource "google_storage_bucket" "production_bucket" {

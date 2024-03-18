@@ -21,6 +21,15 @@ variable "gcp_service_apis" {
   ]
 }
 
+variable "service_account_roles" {
+  description ="The list of roles necessary for your service account"
+  type = list(string)
+  default = [
+    "roles/storage.admin",
+    "roles/bigquery.admin"
+  ]
+}
+
 variable "storage_class" {
   description = "Storage class type for your bucket. Check official docs for more info."
   default = "STANDARD"
