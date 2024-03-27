@@ -42,7 +42,7 @@ resource "google_service_account_key" "my_service_account_key" {
 }
 
 # Download the JSON key of service account to local machine.
-resource "local_sensitive_file" "foo" {
+resource "local_sensitive_file" "google_application_credentials" {
   content_base64 = google_service_account_key.my_service_account_key.private_key
   filename       = "../google_application_credentials.json"
 }
