@@ -52,7 +52,7 @@ x-airflow-common:
   # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.8.2}
   &airflow-common
   build:
-    dockerfile: airflow.Dockerfile
+    dockerfile: Dockerfile.airflow
   environment: &airflow-common-env
     AIRFLOW_UID: ${AIRFLOW_UID}
     AIRFLOW_GID: ${AIRFLOW_GID}
@@ -84,6 +84,8 @@ x-airflow-common:
       condition: service_healthy
     postgres:
       condition: service_healthy
+  networks:
+    - airflow_spark_network
   secrets:
     - google_service_account
 
@@ -102,6 +104,8 @@ services:
       retries: 5
       start_period: 5s
     restart: always
+    networks:
+      - airflow_spark_network
 
   redis:
     image: redis:latest
@@ -116,6 +120,8 @@ services:
     restart: always
     volumes:
       - redis_data:/data
+    networks:
+      - airflow_spark_network
 
   airflow-init:
     <<: *airflow-common
@@ -203,6 +209,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - airflow_spark_network
 
   airflow-scheduler:
     <<: *airflow-common
@@ -224,6 +232,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - airflow_spark_network
 
   airflow-worker:
     <<: *airflow-common
@@ -247,6 +257,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - airflow_spark_network
 
   airflow-triggerer:
     <<: *airflow-common
@@ -266,6 +278,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - airflow_spark_network
 
   airflow-cli:
     <<: *airflow-common
@@ -315,6 +329,8 @@ services:
     ports:
       - "7077:7077" # Spark Master
       - "9090:8080" # Spark Master UI
+    networks:
+      - airflow_spark_network
 
   spark-worker:
     image: spark:3.5.1-scala2.12-java17-python3-ubuntu
@@ -332,12 +348,18 @@ services:
       - spark-master
     ports:
       - "8081:8081" # Spark Worker UI
+    networks:
+      - airflow_spark_network
 
 volumes:
   postgres-db-volume:
   airflow-volume:
   redis_data:
     external: false
+
+networks:
+  airflow_spark_network:
+    driver: bridge
 
 secrets:
   google_service_account:
