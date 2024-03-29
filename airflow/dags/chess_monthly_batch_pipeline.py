@@ -6,7 +6,7 @@ from airflow import DAG
 from airflow.utils.dates import days_ago
 from airflow.operators.python import PythonOperator
 
-import dask.dataframe as dd
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from google.cloud import storage
 
 import requests
@@ -32,45 +32,6 @@ def convert_raw_data_to_csv(uncompressed_file_path: str) -> str:
     converted_file_path = uncompressed_file_path.split(".")[0] + ".csv"
     subprocess.run(["python3", "-m", "pgn2csv", uncompressed_file_path])
     return converted_file_path
-
-
-def partition_csv_file_to_parquet(csv_file_path: str) -> None:
-    dtype = {
-        "GameID": "str",
-        "Event": "str",
-        "Site": "str",
-        "Date": "str",
-        "Round": "str",
-        "White": "str",
-        "Black": "str",
-        "Result": "str",
-        "UTCDate": "str",
-        "UTCTime": "str",
-        "WhiteElo": "int64",
-        "BlackElo": "int64",
-        "WhiteRatingDiff": "float64",
-        "BlackRatingDiff": "float64",
-        "WhiteTitle": "str",
-        "BlackTitle": "str",
-        "ECO": "str",
-        "Opening": "str",
-        "TimeControl": "str",
-        "Termination": "str",
-        "GameMoves": "str",
-    }
-
-    ddf: dd.DataFrame = dd.read_csv(
-        csv_file_path,
-        storage_options={"token": "google_default"},
-        dtype=dtype,
-        assume_missing=True,
-    )
-    ddf.to_parquet(
-        "gcs://data_zoomcamp_mage_bucket_1/dask_output",
-        storage_options={"token": "google_default"},
-        write_index=False,
-    )
-
 
 default_args = {
     "owner": "airflow",
@@ -104,12 +65,9 @@ with DAG(
         provide_context=True,
     )
 
-    upload_to_gcs_as_parquet_task = PythonOperator(
-        task_id="upload_to_gcs",
-        python_callable=partition_csv_file_to_parquet,
-        op_kwargs={
-            "csv_file_path": "{{ ti.xcom_pull(task_ids='convert_pgn_zst_to_csv_format') }}"
-        },
-    )
+    # upload_to_gcs_as_parquet_task = SparkSubmitOperator(
+    #     task_id="convert_and_upload_as_parquet_to_gcs",
+    # )
 
-    download_task >> conversion_task >> upload_to_gcs_as_parquet_task
+    download_task >> conversion_task 
+    # >> upload_to_gcs_as_parquet_task
