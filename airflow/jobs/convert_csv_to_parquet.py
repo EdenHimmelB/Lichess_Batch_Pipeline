@@ -8,7 +8,31 @@ from pyspark.sql.types import (
 )
 import sys
 
-schema = StructField([StringType()])
+schema = StructType(
+    [
+        StructField("GameID", StringType(), False),
+        StructField("Event", StringType(), True),
+        StructField("Site", StringType(), True),
+        StructField("Date", StringType(), True),
+        StructField("Round", StringType(), True),
+        StructField("White", StringType(), True),
+        StructField("Black", StringType(), True),
+        StructField("Result", StringType(), True),
+        StructField("UTCDate", StringType(), True),
+        StructField("UTCTime", StringType(), True),
+        StructField("WhiteElo", IntegerType(), True),
+        StructField("BlackElo", IntegerType(), True),
+        StructField("WhiteRatingDiff", FloatType(), True),
+        StructField("BlackRatingDiff", FloatType(), True),
+        StructField("WhiteTitle", StringType(), True),
+        StructField("BlackTitle", StringType(), True),
+        StructField("ECO", StringType(), True),
+        StructField("Opening", StringType(), True),
+        StructField("TimeControl", StringType(), True),
+        StructField("Termination", StringType(), True),
+        StructField("GameMoves", StringType(), True),
+    ]
+)
 
 
 def convert_csv_to_parquet(csv_file_path, output_path):
