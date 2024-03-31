@@ -363,4 +363,4 @@ networks:
 
 secrets:
   google_service_account:
-    file: "./google_credentials.json"
+    file: "./keys/google_credentials.json"
