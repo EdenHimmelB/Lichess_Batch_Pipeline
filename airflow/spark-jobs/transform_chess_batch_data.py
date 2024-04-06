@@ -83,9 +83,10 @@ def transform_chess_data(csv_path, parquet_path) -> None:
         F.col("Termination").alias("termination"),
         F.col("ECO").alias("eco"),
         F.col("Opening").alias("opening"),
-        F.from_json(F.regexp_replace("GameMoves", "'", '"'), moveSchema),
+        F.from_json(F.regexp_replace("GameMoves", "'", '"'), moveSchema).alias(
+            "game_moves"
+        ),
     )
-
     df.write.parquet(parquet_path)
 
 
