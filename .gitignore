@@ -7,6 +7,7 @@ airflow/config, logs, plugins
 */__pycache__
 
 airflow/.env
+airflow/airflow.cfg
 airflow/logs/
 airflow/plugins/
 airflow/*/__pycache__
