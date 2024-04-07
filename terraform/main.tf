@@ -22,7 +22,7 @@ resource "google_project_service" "gcp_services" {
 
 # Create a service account to operates task on the cloud.
 resource "google_service_account" "my_service_account" {
-  account_id                   = "lichess-batch-pipeline-worker"
+  account_id                   = "chess-batch-pipeline-worker"
   display_name                 = "Main service account which enables all operations in the cloud."
   create_ignore_already_exists = true
 }
@@ -44,7 +44,7 @@ resource "google_service_account_key" "my_service_account_key" {
 # Download the JSON key of service account to local machine.
 resource "local_sensitive_file" "google_application_credentials" {
   content_base64 = google_service_account_key.my_service_account_key.private_key
-  filename       = "../google_application_credentials.json"
+  filename       = "../keys/google_application_credentials.json"
 }
 
 resource "google_storage_bucket" "production_bucket" {
@@ -62,20 +62,17 @@ resource "google_storage_bucket" "production_bucket" {
   }
 }
 
-# resource "google_bigquery_dataset" "dataset" {
-#   dataset_id = var.BQ_DATASET
-#   project    = var.project
-#   location   = var.region
-# }
+resource "google_storage_bucket_object" "empty_folder" {
+  name       = var.standard_games_folder
+  content    = " " # content is ignored but should be non-empty
+  bucket     = var.gcs_bucket_name
+  depends_on = [google_storage_bucket.production_bucket]
+}
 
-# resource "google_bigquery_dataset" "staging" {
-#   dataset_id = var.BQ_STAGING_DATASET
-#   project    = var.project
-#   location   = var.region
-# }
+resource "google_bigquery_dataset" "dataset" {
+  dataset_id = var.bigquery_dataset
+  project    = var.project
+  location   = var.region
+  depends_on = [google_project_service.gcp_services]
+}
 
-# resource "google_bigquery_dataset" "production" {
-#   dataset_id = var.BQ_PRODUCTION_DATASET
-#   project    = var.project
-#   location   = var.region
-# }

@@ -1,17 +1,17 @@
 variable "project" {
   description = "Your GCP Project ID"
-  default = "data-engineering-starter"
+  default     = "data-engineering-starter"
 }
 
 variable "region" {
   description = "Region for GCP resources. Choose as per your location: https://cloud.google.com/about/locations"
-  default = "US"
-  type = string
+  default     = "US"
+  type        = string
 }
 
 variable "gcp_service_apis" {
-  description ="The list of apis necessary for the project"
-  type = list(string)
+  description = "The list of apis necessary for the project"
+  type        = list(string)
   default = [
     "cloudresourcemanager.googleapis.com",
     "serviceusage.googleapis.com",
@@ -22,8 +22,8 @@ variable "gcp_service_apis" {
 }
 
 variable "service_account_roles" {
-  description ="The list of roles necessary for your service account"
-  type = list(string)
+  description = "The list of roles necessary for your service account"
+  type        = list(string)
   default = [
     "roles/storage.admin",
     "roles/bigquery.admin"
@@ -32,27 +32,21 @@ variable "service_account_roles" {
 
 variable "storage_class" {
   description = "Storage class type for your bucket. Check official docs for more info."
-  default = "STANDARD"
+  default     = "STANDARD"
 }
 
 variable "gcs_bucket_name" {
-    description = "Your GCS bucket name."
-    default = "lichess_batch_pipeline_1"
+  description = "Your GCS bucket name."
+  default     = "chess_object_storage"
 }
 
-variable "BQ_DATASET" {
+variable "standard_games_folder" {
+  description = "GCS folder for chess standard games."
+  default     = "standard_games/"
+}
+
+variable "bigquery_dataset" {
   description = "BigQuery Dataset that raw data (from GCS) will be written to."
-  type = string
-  default = "tennis_data"
-}
-variable "BQ_STAGING_DATASET" {
-  description = "BigQuery Dataset that will serve as staging."
-  type = string
-  default = "staging"
-}
-
-variable "BQ_PRODUCTION_DATASET" {
-  description = "BigQuery Dataset that will serve as production for final tables."
-  type = string
-  default = "production"
+  type        = string
+  default     = "chess_datawarehouse"
 }
