@@ -37,7 +37,7 @@ variable "storage_class" {
 
 variable "gcs_bucket_name" {
   description = "Your GCS bucket name."
-  default     = "chess_object_storage"
+  default     = "chess_object_storage_769413"
 }
 
 variable "standard_games_folder" {
