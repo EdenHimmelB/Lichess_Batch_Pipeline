@@ -37,59 +37,67 @@ class PGNParser:
     def parse_pgn(self, processing_queue: JoinableQueue) -> None:
         previous_match_record = None
         match_record = Match()
-        content = self._blob.download_as_bytes()
 
         # Start the subprocess with stdin and stdout set to subprocess.PIPE
-        proc = subprocess.Popen(
-            ["pzstd", "-dc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
-        )
+        with subprocess.Popen(
+            ["pzstd", "-dc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=-1
+        ) as proc:
 
-        # Write the content to the subprocess stdin and close stdin to signal that no more data will be sent
-        stdout_data, _ = proc.communicate(input=content)
+            # Stream the blob content and write it to the subprocess's stdin
+            with self._blob.open("rb") as blob_stream:
+                for chunk in blob_stream:
+                    proc.stdin.write(chunk)
+                proc.stdin.close()  # Important to close stdin to signal the end of input
 
-        # Iterate through each line in the output
-        for line in stdout_data.splitlines():
-            decoded_line = line.decode()
-            # If self._consecutive_non_tag_lines > 2, it means that 3 lines have been parsed
-            # (1 blank line, moves line/ result line, another blank line)
-            # which indicates an entirely different game has been reached.
-            if self._consecutive_non_tag_lines > 2:
+            # Process the decompressed data from stdout
+            while True:
+                output_chunk = proc.stdout.readline()  # Reads a line from the output
+                if not output_chunk:
+                    break
+                decoded_line = output_chunk.decode()
+
+                # If self._consecutive_non_tag_lines > 2, it means that 3 lines have been parsed
+                # (1 blank line, moves line/ result line, another blank line)
+                # which indicates an entirely different game has been reached.
+                if self._consecutive_non_tag_lines > 2:
+                    processing_queue.put(match_record)
+                    print(f"process {match_record}")
+                    self._consecutive_non_tag_lines = 0
+                    previous_match_record = match_record
+                    match_record = Match()
+
+                # This block indicates a tag line has been parsed
+                if tag_match := TAG_REGEX.match(decoded_line):
+                    self._consecutive_non_tag_lines = 0
+                    tag_name, tag_value = tag_match.groups()
+                    match_record.set_attribute(name=tag_name.lower(), value=tag_value)
+
+                # If not tag line, will next check if it's moves line with or without comments
+                elif move_match := COMPLEX_MOVES_REGEX.findall(decoded_line):
+                    self._consecutive_non_tag_lines += 1
+                    moves = [
+                        {"move": move[0], "eval": move[1], "time": move[2]}
+                        for move in move_match
+                    ]
+                    match_record.set_attribute(name="gamemoves", value=moves)
+
+                elif move_match := BASIC_MOVES_REGEX.findall(decoded_line):
+                    self._consecutive_non_tag_lines += 1
+                    moves = [{"move": move} for move in move_match]
+                    match_record.set_attribute(name="gamemoves", value=moves)
+
+                # Empty line or else will be ignored.
+                else:
+                    self._consecutive_non_tag_lines += 1
+
+            # If the last match record is an incomplete record due to file partitioned,
+            # it would not be pushed.
+            # This block will push that last record to the processing queue.
+            if previous_match_record != match_record:
                 processing_queue.put(match_record)
-                self._consecutive_non_tag_lines = 0
-                previous_match_record = match_record
-                match_record = Match()
+                print(f"process {match_record}")
 
-            # This block indicates a tag line has been parsed
-            if tag_match := TAG_REGEX.match(decoded_line):
-                self._consecutive_non_tag_lines = 0
-                tag_name, tag_value = tag_match.groups()
-                match_record.set_attribute(name=tag_name.lower(), value=tag_value)
-
-            # If not tag line, will next check if it's moves line with or without comments
-            elif move_match := COMPLEX_MOVES_REGEX.findall(decoded_line):
-                self._consecutive_non_tag_lines += 1
-                moves = [
-                    {"move": move[0], "eval": move[1], "time": move[2]}
-                    for move in move_match
-                ]
-                match_record.set_attribute(name="gamemoves", value=moves)
-
-            elif move_match := BASIC_MOVES_REGEX.findall(decoded_line):
-                self._consecutive_non_tag_lines += 1
-                moves = [{"move": move} for move in move_match]
-                match_record.set_attribute(name="gamemoves", value=moves)
-
-            # Empty line or else will proceed
-            else:
-                self._consecutive_non_tag_lines += 1
-
-        # If the last match record is an incomplete record due to file partitioned,
-        # it would not be pushed.
-        # This block will push that last record to the processing queue.
-        if previous_match_record != match_record:
-            processing_queue.put(match_record)
-
-        processing_queue.join()
+            processing_queue.join()
 
 
 class CSVWriter:
@@ -134,6 +142,7 @@ class CSVWriter:
 
             while True:
                 match_record: Match = processing_queue.get()
+
                 if match_record is None:
                     processing_queue.task_done()
                     break
