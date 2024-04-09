@@ -6,6 +6,7 @@ from threading import Thread
 from .match import Match
 from multiprocessing import JoinableQueue, Process
 
+import time
 from google.cloud import storage
 
 TAG_REGEX = re.compile(r'\[(\w+)\s+"([^"]+)"\]')
@@ -49,6 +50,7 @@ class PGNParser:
             # which indicates an entirely different game has been reached.
             if self._consecutive_non_tag_lines > 2:
                 processing_queue.put(match_record)
+                time.sleep(1 / 1200)
                 record += 1
                 print(f"process {record}")
                 self._consecutive_non_tag_lines = 0
@@ -82,20 +84,19 @@ class PGNParser:
         # Don't forget to add the last match record processing here
         if previous_match_record != match_record:
             processing_queue.put(match_record)
-            print(f"process {match_record}")
 
     def parse_pgn(self, processing_queue: JoinableQueue) -> None:
         with subprocess.Popen(
             ["pzstd", "-dc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=-1
         ) as proc, self._blob.open("rb") as blob_stream:
-            
+
             # Start a thread for writing to the subprocess
             writer_thread = Thread(target=self.write_to_proc, args=(proc, blob_stream))
             writer_thread.start()
-            
+
             # Read from the subprocess in the main thread
             self.read_from_proc(proc, processing_queue)
-            
+
             # Wait for the writer thread to complete
             writer_thread.join()
             processing_queue.join()

@@ -12,5 +12,4 @@ airflow/logs/
 airflow/plugins/
 airflow/*/__pycache__
 
-# .env
-# .dockerignore
+.keys/
