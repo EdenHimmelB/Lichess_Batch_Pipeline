@@ -74,6 +74,12 @@ x-airflow-common:
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+
+    # Custom environment variables for airflow dags
+    GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
+    BIGQUERY_CHESS_DATASET: ${BIGQUERY_CHESS_DATASET}
+    BIGQUERY_CHESS_TABLE: ${BIGQUERY_CHESS_TABLE}
+    GOOGLE_STORAGE_BUCKET: ${GOOGLE_STORAGE_BUCKET}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/spark-jobs:/opt/airflow/spark-jobs
