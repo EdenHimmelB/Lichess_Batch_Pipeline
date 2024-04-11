@@ -50,9 +50,8 @@ class PGNParser:
             # which indicates an entirely different game has been reached.
             if self._consecutive_non_tag_lines > 2:
                 processing_queue.put(match_record)
-                time.sleep(1 / 1200)
+                time.sleep(1 / 1000)
                 record += 1
-                print(f"process {record}")
                 self._consecutive_non_tag_lines = 0
                 previous_match_record = match_record
                 match_record = Match()
@@ -206,5 +205,5 @@ class Converter:
         # Signal the CSVWrite process to stop by adding None to the queue
         processing_queue.put(None)
 
-        # Wait for the print process to finish
+        # Wait for
         process_2.join()

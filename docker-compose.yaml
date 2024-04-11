@@ -66,6 +66,8 @@ x-airflow-common:
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
     AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master.com:7077
+    AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT: 'google-cloud-platform://?extra__google_cloud_platform__key_path=${GOOGLE_APPLICATION_CREDENTIALS}'
+
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server

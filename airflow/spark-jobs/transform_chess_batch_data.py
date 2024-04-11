@@ -7,11 +7,12 @@ from pyspark.sql.types import (
     FloatType,
     StringType,
     ArrayType,
+    TimestampType,
 )
 import argparse
 
 spark: SparkSession = (
-    SparkSession.builder.master("local[*]")
+    SparkSession.builder.master("local[8]")
     .appName("CSV to Parquet Conversion")
     .getOrCreate()
 )
@@ -53,18 +54,15 @@ moveSchema = ArrayType(
 )
 
 
-def transform_chess_data(csv_path, parquet_path) -> None:
-    df = spark.read.csv(csv_path, header=True, schema=schema)
+def transform_chess_data(input_path, output_path) -> None:
+    df = spark.read.csv(input_path, header=True, schema=schema)
     df = df.withColumn(
         "UTCDateTime", F.concat(F.col("UTCDate"), F.lit(" "), F.col("UTCTime"))
     )
 
     df = df.select(
         F.col("GameID").alias("game_id"),
-        F.date_format(
-            F.to_timestamp(F.col("UTCDateTime"), "yyyy.MM.dd HH:mm:ss"),
-            "HH:mm:ss dd-MM-yyyy",
-        ).alias("timestamp"),
+        F.to_timestamp(F.col("UTCDateTime"), "yyyy.MM.dd HH:mm:ss").alias("timestamp"),
         F.trim(
             F.regexp_substr(str=F.col("Event"), regexp=F.lit("^(?:(?!https://).)*"))
         ).alias("game_type"),
@@ -81,30 +79,25 @@ def transform_chess_data(csv_path, parquet_path) -> None:
         F.col("BlackRatingDiff").alias("black_rating_change"),
         F.col("Result").alias("result"),
         F.col("Termination").alias("termination"),
-        F.col("ECO").alias("eco"),
-        F.col("Opening").alias("opening"),
+        F.when(F.col("ECO") == "?", F.lit(None)).otherwise(F.col("ECO")).alias("eco"),
+        F.when(F.col("Opening") == "?", F.lit(None))
+        .otherwise(F.col("Opening"))
+        .alias("opening"),
         F.from_json(F.regexp_replace("GameMoves", "'", '"'), moveSchema).alias(
             "game_moves"
         ),
     )
-    df.write.parquet(parquet_path)
+    df.write.mode("overwrite").format("parquet").save(output_path)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Convert csv file and upload to cloud as parquet."
-    )
+    parser = argparse.ArgumentParser(description="File conversion")
     parser.add_argument(
-        "--csv_path", type=str, help="name of the csv file which needs be converted"
+        "--input_path", type=str, help="name of the csv file which needs be converted"
     )
     args = parser.parse_args()
-    csv_path = args.csv_path
-    print(csv_path)
-    parquet_path = csv_path.split(".")[0] + ".parquet"
-
-    try:
-        transform_chess_data(csv_path=csv_path, parquet_path=parquet_path)
-    except Exception:
-        print(Exception)
+    input_path = args.input_path
+    output_path = input_path.split(".")[0]
+    transform_chess_data(input_path=input_path, output_path=output_path)
 
     spark.stop()
