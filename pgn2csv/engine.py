@@ -1,10 +1,12 @@
 import re
 import csv
 import subprocess
+from threading import Thread
 
 from .match import Match
 from multiprocessing import JoinableQueue, Process
 
+import time
 from google.cloud import storage
 
 TAG_REGEX = re.compile(r'\[(\w+)\s+"([^"]+)"\]')
@@ -23,38 +25,33 @@ BASIC_MOVES_REGEX = re.compile(
 
 
 class PGNParser:
-    def __init__(self, file_path: str) -> None:
+    def __init__(self, file_path: str, blob) -> None:
         self.file_path = file_path
         self._consecutive_non_tag_lines = 0
+        self._blob = blob
 
-        _bucket_name = self.file_path.split("/")[2]
-        _blob_name = "/".join(self.file_path.split("/")[3:])
+    def write_to_proc(self, proc, blob_stream):
+        for chunk in blob_stream:
+            proc.stdin.write(chunk)
+        proc.stdin.close()
 
-        self._storage_client = storage.Client()
-        self._bucket = self._storage_client.bucket(_bucket_name)
-        self._blob = self._bucket.blob(_blob_name)
-
-    def parse_pgn(self, processing_queue: JoinableQueue) -> None:
-        previous_match_record = None
+    def read_from_proc(self, proc, processing_queue: JoinableQueue) -> None:
         match_record = Match()
-        content = self._blob.download_as_bytes()
+        previous_match_record = None
+        record = 0
+        while True:
+            output_chunk = proc.stdout.readline()
+            if not output_chunk:
+                break
+            decoded_line = output_chunk.decode()
 
-        # Start the subprocess with stdin and stdout set to subprocess.PIPE
-        proc = subprocess.Popen(
-            ["pzstd", "-dc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
-        )
-
-        # Write the content to the subprocess stdin and close stdin to signal that no more data will be sent
-        stdout_data, _ = proc.communicate(input=content)
-
-        # Iterate through each line in the output
-        for line in stdout_data.splitlines():
-            decoded_line = line.decode()
             # If self._consecutive_non_tag_lines > 2, it means that 3 lines have been parsed
             # (1 blank line, moves line/ result line, another blank line)
             # which indicates an entirely different game has been reached.
             if self._consecutive_non_tag_lines > 2:
                 processing_queue.put(match_record)
+                time.sleep(1 / 1000)
+                record += 1
                 self._consecutive_non_tag_lines = 0
                 previous_match_record = match_record
                 match_record = Match()
@@ -79,29 +76,35 @@ class PGNParser:
                 moves = [{"move": move} for move in move_match]
                 match_record.set_attribute(name="gamemoves", value=moves)
 
-            # Empty line or else will proceed
+            # Empty line or else will be ignored.
             else:
                 self._consecutive_non_tag_lines += 1
 
-        # If the last match record is an incomplete record due to file partitioned,
-        # it would not be pushed.
-        # This block will push that last record to the processing queue.
+        # Don't forget to add the last match record processing here
         if previous_match_record != match_record:
             processing_queue.put(match_record)
 
-        processing_queue.join()
+    def parse_pgn(self, processing_queue: JoinableQueue) -> None:
+        with subprocess.Popen(
+            ["pzstd", "-dc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=-1
+        ) as proc, self._blob.open("rb") as blob_stream:
+
+            # Start a thread for writing to the subprocess
+            writer_thread = Thread(target=self.write_to_proc, args=(proc, blob_stream))
+            writer_thread.start()
+
+            # Read from the subprocess in the main thread
+            self.read_from_proc(proc, processing_queue)
+
+            # Wait for the writer thread to complete
+            writer_thread.join()
+            processing_queue.join()
 
 
 class CSVWriter:
-    def __init__(self, file_path: str) -> None:
+    def __init__(self, file_path: str, blob) -> None:
         self.file_path = file_path
-
-        _bucket_name = self.file_path.split("/")[2]
-        _blob_name = "/".join(self.file_path.split("/")[3:])
-
-        self._storage_client = storage.Client()
-        self._bucket = self._storage_client.bucket(_bucket_name)
-        self._blob = self._bucket.blob(_blob_name)
+        self._blob = blob
 
     def write_csv(self, processing_queue: JoinableQueue):
         with self._blob.open("w", newline="", encoding="utf-8") as csv_file:
@@ -134,6 +137,7 @@ class CSVWriter:
 
             while True:
                 match_record: Match = processing_queue.get()
+
                 if match_record is None:
                     processing_queue.task_done()
                     break
@@ -167,10 +171,20 @@ class CSVWriter:
 
 class Converter:
     @staticmethod
-    def run(input_file_path: str, target_file_path: str):
-        processing_queue = JoinableQueue()
-        parser = PGNParser(input_file_path)
-        csv_writer = CSVWriter(target_file_path)
+    def run(input_file_path: str, output_file_path: str):
+        processing_queue = JoinableQueue(maxsize=100000)
+
+        bucket_name = input_file_path.split("/")[2]
+        input_blob_name = "/".join(input_file_path.split("/")[3:])
+        output_blob_name = "/".join(output_file_path.split("/")[3:])
+
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        input_blob = bucket.blob(input_blob_name)
+        output_blob = bucket.blob(output_blob_name)
+
+        parser = PGNParser(input_file_path, input_blob)
+        csv_writer = CSVWriter(output_file_path, output_blob)
 
         process_1 = Process(
             target=parser.parse_pgn,
@@ -191,5 +205,5 @@ class Converter:
         # Signal the CSVWrite process to stop by adding None to the queue
         processing_queue.put(None)
 
-        # Wait for the print process to finish
+        # Wait for
         process_2.join()

@@ -65,6 +65,9 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
+    AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master.com:7077
+    AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT: 'google-cloud-platform://?extra__google_cloud_platform__key_path=${GOOGLE_APPLICATION_CREDENTIALS}'
+
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
@@ -73,8 +76,15 @@ x-airflow-common:
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+
+    # Custom environment variables for airflow dags
+    GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
+    BIGQUERY_CHESS_DATASET: ${BIGQUERY_CHESS_DATASET}
+    BIGQUERY_CHESS_TABLE: ${BIGQUERY_CHESS_TABLE}
+    GOOGLE_STORAGE_BUCKET: ${GOOGLE_STORAGE_BUCKET}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/spark-jobs:/opt/airflow/spark-jobs
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
     - ./pgn2csv:/opt/pgn2csv
@@ -186,6 +196,8 @@ services:
     user: "0:0"
     volumes:
       - .:/opt
+    networks:
+      - airflow_spark_network
 
   airflow-webserver:
     <<: *airflow-common
@@ -293,6 +305,8 @@ services:
       - bash
       - -c
       - airflow
+    networks:
+      - airflow_spark_network
 
   # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
   # or by explicitly targeted on the command line e.g. docker-compose up flower.
@@ -315,29 +329,35 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - airflow_spark_network
 
   # Apache Spark Setup
   spark-master:
-    image: spark:3.5.1-scala2.12-java17-python3-ubuntu
+    image: spark:3.5.1-python3
+    # image: spark:3.4.1
     # build:
-    #   dockerfile: spark.Dockerfile
+    #   dockerfile: Dockerfile.spark
     working_dir: /opt/spark
-    command: /bin/bash -c "bin/spark-class org.apache.spark.deploy.master.Master -h spark-master"
-    hostname: spark-master
+    command: /bin/bash -c "bin/spark-class org.apache.spark.deploy.master.Master -h spark-master.com"
+    hostname: spark-master.com
     environment:
-      SPARK_LOCAL_IP: spark-master
+      SPARK_LOCAL_IP: spark-master.com
     ports:
       - "7077:7077" # Spark Master
       - "9090:8080" # Spark Master UI
     networks:
       - airflow_spark_network
+    # volumes:
+    #   - ./keys/google_credentials.json:/opt/spark/keys/google_credentials.json
 
   spark-worker:
-    image: spark:3.5.1-scala2.12-java17-python3-ubuntu
+    image: spark:3.5.1-python3
+    # image: spark:3.4.1
     # build:
-    #   dockerfile: spark.Dockerfile
+    #   dockerfile: Dockerfile.spark
     working_dir: /opt/spark
-    command: /bin/bash -c "bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+    command: /bin/bash -c "bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master.com:7077"
     environment:
       SPARK_WORKER_CORES: 8
       # SPARK_WORKER_MEMORY: 2g
@@ -350,6 +370,8 @@ services:
       - "8081:8081" # Spark Worker UI
     networks:
       - airflow_spark_network
+    # volumes:
+    #   - ./keys/google_credentials.json:/opt/spark/keys/google_credentials.json
 
 volumes:
   postgres-db-volume:
