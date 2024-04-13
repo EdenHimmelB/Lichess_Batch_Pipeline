@@ -7,14 +7,11 @@ from airflow.utils.task_group import TaskGroup
 from airflow.utils.dates import days_ago
 from airflow.operators.python import PythonOperator
 
-# from airflow.providers.google.cloud.transfers.gcs_to_bigquery import (
-#     GCSToBigQueryOperator,
-# )
 from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from google.cloud import storage
 
-import requests
+from pypdl import Downloader
 
 BASE_YEAR = datetime.now().strftime("%Y")
 BASE_MONTH = (datetime.now() - relativedelta(months=1)).strftime("%m")
@@ -39,23 +36,43 @@ blob = bucket.blob(RAW_FILE_NAME)
 
 
 def download_data_to_gcs() -> str:
-    # Ensure that logging is configured at the beginning of your script or application
-    logging.basicConfig(level=logging.INFO)
+    data_dir_path = os.path.join(os.getcwd(), "data")
+    try:
+        os.mkdir(data_dir_path)
+    except FileExistsError:
+        os.rmdir(data_dir_path)
+        os.mkdir(data_dir_path)
+    local_raw_file_path = os.path.join(data_dir_path, RAW_FILE_NAME)
 
-    with requests.get(BASE_URL, stream=True, timeout=None) as r:
-        logging.info(f"HTTP Status Code: {r.status_code}")  # Log the status code
-        r.raise_for_status()
-
-        blob.upload_from_file(
-            r.raw, content_type=r.headers["Content-Type"], timeout=None
-        )
-
-    return f"gs://{STORAGE_BUCKET_NAME}/{RAW_FILE_NAME}"
+    dl = Downloader(timeout=None)
+    dl.start(
+        url=BASE_URL,
+        file_path=local_raw_file_path,
+        segments=4,
+        display=True,
+        multithread=True,
+        block=True,
+        retries=0,
+        mirror_func=None,
+        etag=True,
+    )
+    return local_raw_file_path
 
 
 def convert_raw_data_to_csv(uncompressed_file_path: str) -> str:
-    subprocess.run(["python3", "-m", "pgn2csv", uncompressed_file_path])
-    return f"gs://{STORAGE_BUCKET_NAME}/{CONVERTED_CSV_FILE_NAME}"
+    decompressed_and_converted_file_path = (
+        f"gs://{STORAGE_BUCKET_NAME}/{CONVERTED_CSV_FILE_NAME}"
+    )
+    subprocess.run(
+        [
+            "python3",
+            "-m",
+            "pgn2csv",
+            uncompressed_file_path,
+            decompressed_and_converted_file_path,
+        ]
+    )
+    return decompressed_and_converted_file_path
 
 
 def load_parquet_to_bigquery(source_objects_uri, destination_project_dataset_table):
@@ -85,8 +102,6 @@ default_args = {
     "owner": "airflow",
     "depends_on_past": False,
     "start_date": days_ago(1),
-    # "retries": 5,
-    # "retry_delay": timedelta(days=1),
 }
 
 with DAG(
@@ -97,23 +112,25 @@ with DAG(
 ) as dag:
 
     with TaskGroup(group_id="Extract_Preprocess") as extract_load_tasks:
-        download_task = PythonOperator(
-            task_id="download_file",
-            python_callable=download_data_to_gcs,
-            provide_context=True,
-            op_kwargs={"url": BASE_URL},
-        )
+        # download_task = PythonOperator(
+        #     task_id="download_file",
+        #     python_callable=download_data_to_gcs,
+        #     provide_context=True,
+        #     op_kwargs={"url": BASE_URL},
+        # )
 
         preprocessing_task = PythonOperator(
             task_id="convert_pgn_zst_to_csv_format",
             python_callable=convert_raw_data_to_csv,
             op_kwargs={
-                "uncompressed_file_path": "{{ ti.xcom_pull(task_ids='Extract_Preprocess.download_file') }}"
+                "uncompressed_file_path": f"/opt/data/{RAW_FILE_NAME}"
+                # "{{ ti.xcom_pull(task_ids='Extract_Preprocess.download_file') }}"
             },
             provide_context=True,
         )
 
-        download_task >> preprocessing_task
+        # download_task >>
+        preprocessing_task
 
     with TaskGroup(group_id="Transform") as transform_tasks:
         transform_task = SparkSubmitOperator(
@@ -137,22 +154,11 @@ with DAG(
                 "spark.executor.cores": 8,
                 "spark.driver.memory": "2g",
                 "spark.executor.memory": "2g",
-                # "spark.jars.packages": "org.apache.spark:spark-avro_2.12:3.5.1",
             },
         )
         transform_task
 
     with TaskGroup(group_id="Load") as load_tasks:
-        # load_bigquery_table = GCSToBigQueryOperator(
-        #     task_id="gcs_to_bigquery",
-        #     bucket=STORAGE_BUCKET_NAME,
-        #     source_objects=[TABLE_SOURCE_FILE_URI],
-        #     destination_project_dataset_table=f"{GOOGLE_CLOUD_PROJECT}.{BIGQUERY_CHESS_DATASET}.{BIGQUERY_CHESS_TABLE}",
-        #     source_format="parquet",
-        #     write_disposition="WRITE_APPEND",
-        #     create_disposition="CREATE_IF_NEEDED",
-        #     time_partitioning={"type": "DAY", "field": "timestamp"},
-        # )
 
         load_bigquery_table = PythonOperator(
             task_id="load_parquet_to_bigquery_custom",

@@ -348,8 +348,6 @@ services:
       - "9090:8080" # Spark Master UI
     networks:
       - airflow_spark_network
-    # volumes:
-    #   - ./keys/google_credentials.json:/opt/spark/keys/google_credentials.json
 
   spark-worker:
     image: spark:3.5.1-python3
@@ -370,8 +368,6 @@ services:
       - "8081:8081" # Spark Worker UI
     networks:
       - airflow_spark_network
-    # volumes:
-    #   - ./keys/google_credentials.json:/opt/spark/keys/google_credentials.json
 
 volumes:
   postgres-db-volume:
@@ -385,4 +381,4 @@ networks:
 
 secrets:
   google_service_account:
-    file: "./keys/google_credentials.json"
+    file: "./keys/google_application_credentials.json"
