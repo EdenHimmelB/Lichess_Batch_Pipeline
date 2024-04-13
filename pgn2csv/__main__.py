@@ -6,12 +6,11 @@ def main():
     parser.add_argument(
         "input", type=str, help="name of the pgn.zst file which needs be converted"
     )
-    parser.add_argument(
-        "output", type=str, help="name of the output file, stored on GCS."
-    )
     args = parser.parse_args()
+    converted_file_name = args.input.split(".")[0] + ".csv"
     
-    Converter.run(args.input, args.output)
+    # print(args.input, converted_file_name)
+    Converter.run(args.input, converted_file_name)
 
 if __name__ == '__main__':
     main()

@@ -1,12 +1,10 @@
 import re
 import csv
 import subprocess
-import time
 
 from .match import Match
 from multiprocessing import JoinableQueue, Process
 
-from google.cloud import storage
 
 TAG_REGEX = re.compile(r'\[(\w+)\s+"([^"]+)"\]')
 COMPLEX_MOVES_REGEX = re.compile(
@@ -29,11 +27,11 @@ class PGNParser:
         self._consecutive_non_tag_lines = 0
 
     def parse_pgn(self, processing_queue: JoinableQueue) -> None:
-        previous_match_record = None
+
         match_record = Match()
 
         with subprocess.Popen(
-            ["pzstd", "-dc", "--rm", self.file_path], stdout=subprocess.PIPE
+            ["pzstd", "-dc", self.file_path], stdout=subprocess.PIPE
         ) as proc:
             for line in proc.stdout:
                 decoded_line = line.decode()
@@ -43,7 +41,6 @@ class PGNParser:
                 # which indicates an entirely different game has been reached.
                 if self._consecutive_non_tag_lines > 2:
                     processing_queue.put(match_record)
-                    time.sleep(1/1200)
                     self._consecutive_non_tag_lines = 0
                     previous_match_record = match_record
                     match_record = Match()
@@ -82,12 +79,11 @@ class PGNParser:
 
 
 class CSVWriter:
-    def __init__(self, file_path: str, blob) -> None:
-        self.file_path = file_path
-        self._blob = blob
+    def __init__(self, csv_file_path: str) -> None:
+        self.csv_file_path = csv_file_path
 
     def write_csv(self, processing_queue: JoinableQueue):
-        with self._blob.open("w", newline="", encoding="utf-8") as csv_file:
+        with open(self.csv_file_path, "w", newline="") as csv_file:
             csv_writer = csv.writer(csv_file, quotechar='"', quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerow(
                 [
@@ -117,7 +113,6 @@ class CSVWriter:
 
             while True:
                 match_record: Match = processing_queue.get()
-
                 if match_record is None:
                     processing_queue.task_done()
                     break
@@ -151,18 +146,10 @@ class CSVWriter:
 
 class Converter:
     @staticmethod
-    def run(input_file_path: str, output_file_path: str):
-        processing_queue = JoinableQueue(maxsize=100000)
-
-        storage_client = storage.Client()
-        bucket_name = output_file_path.split("/")[2]
-        bucket = storage_client.bucket(bucket_name)
-        output_blob_name = "/".join(output_file_path.split("/")[3:])
-        output_blob = bucket.blob(output_blob_name)
-
-
+    def run(input_file_path: str, target_file_path: str):
+        processing_queue = JoinableQueue()
         parser = PGNParser(input_file_path)
-        csv_writer = CSVWriter(output_file_path, output_blob)
+        csv_writer = CSVWriter(target_file_path)
 
         process_1 = Process(
             target=parser.parse_pgn,
@@ -183,5 +170,5 @@ class Converter:
         # Signal the CSVWrite process to stop by adding None to the queue
         processing_queue.put(None)
 
-        # Wait for
+        # Wait for the print process to finish
         process_2.join()
