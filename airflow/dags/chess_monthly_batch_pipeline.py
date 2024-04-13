@@ -1,4 +1,4 @@
-import os, subprocess, logging
+import os, subprocess, shutil
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -14,12 +14,11 @@ from google.cloud import storage
 from pypdl import Downloader
 
 BASE_YEAR = datetime.now().strftime("%Y")
-BASE_MONTH = (datetime.now() - relativedelta(months=1)).strftime("%m")
+BASE_MONTH = (datetime.now() - relativedelta(months=2)).strftime("%m")
 BASE_URL = f"https://database.lichess.org/standard/lichess_db_standard_rated_{BASE_YEAR}-{BASE_MONTH}.pgn.zst"
 # BASE_URL = (
 #     "https://storage.googleapis.com/data_zoomcamp_mage_bucket_1/mock_data.pgn.zst"
 # )
-# BASE_URL = "https://storage.googleapis.com/data_zoomcamp_mage_bucket_1/mock_data.pgn.zst"
 
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -32,17 +31,18 @@ TABLE_SOURCE_FILE_URI = CONVERTED_CSV_FILE_NAME.split(".")[0] + "/*.parquet"
 
 client = storage.Client()
 bucket = client.bucket(STORAGE_BUCKET_NAME)
-blob = bucket.blob(RAW_FILE_NAME)
+
+DATA_DIR_PATH = os.path.join(os.getcwd(), "data")
 
 
-def download_data_to_gcs() -> str:
-    data_dir_path = os.path.join(os.getcwd(), "data")
+def download_data_to_local() -> str:
     try:
-        os.mkdir(data_dir_path)
+        os.mkdir(DATA_DIR_PATH)
     except FileExistsError:
-        os.rmdir(data_dir_path)
-        os.mkdir(data_dir_path)
-    local_raw_file_path = os.path.join(data_dir_path, RAW_FILE_NAME)
+        shutil.rmtree(DATA_DIR_PATH, ignore_errors=False, onerror=None)
+        os.mkdir(DATA_DIR_PATH)
+
+    local_raw_file_path = os.path.join(DATA_DIR_PATH, RAW_FILE_NAME)
 
     dl = Downloader(timeout=None)
     dl.start(
@@ -59,20 +59,23 @@ def download_data_to_gcs() -> str:
     return local_raw_file_path
 
 
-def convert_raw_data_to_csv(uncompressed_file_path: str) -> str:
-    decompressed_and_converted_file_path = (
-        f"gs://{STORAGE_BUCKET_NAME}/{CONVERTED_CSV_FILE_NAME}"
-    )
+def convert_raw_data_to_csv_locally(uncompressed_file_path: str) -> str:
+    converted_csv_file_path = os.path.join(DATA_DIR_PATH, CONVERTED_CSV_FILE_NAME)
     subprocess.run(
-        [
-            "python3",
-            "-m",
-            "pgn2csv",
-            uncompressed_file_path,
-            decompressed_and_converted_file_path,
-        ]
+        ["python3", "-m", "pgn2csv", uncompressed_file_path, converted_csv_file_path]
     )
-    return decompressed_and_converted_file_path
+    return converted_csv_file_path
+
+
+def upload_csv_file_to_gcs(csv_file_path: str) -> str:
+    csv_in_gcs_blob = bucket.blob(CONVERTED_CSV_FILE_NAME)
+    with open(csv_file_path, "rb") as csv_stream:
+        csv_in_gcs_blob.upload_from_file(csv_stream)
+    return f"gs://{STORAGE_BUCKET_NAME}/{CONVERTED_CSV_FILE_NAME}"
+
+
+def clean_up_local_env() -> None:
+    shutil.rmtree(DATA_DIR_PATH, ignore_errors=False, onerror=None)
 
 
 def load_parquet_to_bigquery(source_objects_uri, destination_project_dataset_table):
@@ -111,37 +114,49 @@ with DAG(
     schedule_interval=None,
 ) as dag:
 
-    with TaskGroup(group_id="Extract_Preprocess") as extract_load_tasks:
-        # download_task = PythonOperator(
-        #     task_id="download_file",
-        #     python_callable=download_data_to_gcs,
-        #     provide_context=True,
-        #     op_kwargs={"url": BASE_URL},
-        # )
+    with TaskGroup(
+        group_id="Extract_Preprocess_Upload"
+    ) as extract_preprocess_upload_tasks:
+        download_task = PythonOperator(
+            task_id="download_data_to_local",
+            python_callable=download_data_to_local,
+            provide_context=True,
+            op_kwargs={"url": BASE_URL},
+        )
 
         preprocessing_task = PythonOperator(
             task_id="convert_pgn_zst_to_csv_format",
-            python_callable=convert_raw_data_to_csv,
+            python_callable=convert_raw_data_to_csv_locally,
             op_kwargs={
-                "uncompressed_file_path": f"/opt/data/{RAW_FILE_NAME}"
-                # "{{ ti.xcom_pull(task_ids='Extract_Preprocess.download_file') }}"
+                "uncompressed_file_path": "{{ ti.xcom_pull(task_ids='Extract_Preprocess_Upload.download_data_to_local') }}"
             },
             provide_context=True,
         )
 
-        # download_task >>
-        preprocessing_task
+        upload_task = PythonOperator(
+            task_id="upload_csv_to_gcs",
+            python_callable=upload_csv_file_to_gcs,
+            op_kwargs={
+                "csv_file_path": "{{ ti.xcom_pull(task_ids='Extract_Preprocess_Upload.convert_pgn_zst_to_csv_format') }}",
+            },
+        )
+
+        clean_up_task = PythonOperator(
+            task_id="clean_up_local_env",
+            python_callable=clean_up_local_env,
+        )
+
+        download_task >> preprocessing_task >> upload_task >> clean_up_task
 
     with TaskGroup(group_id="Transform") as transform_tasks:
-        transform_task = SparkSubmitOperator(
+        spark_transform_task = SparkSubmitOperator(
             task_id="convert_and_upload_as_parquet_to_gcs",
             application="/opt/airflow/spark-jobs/transform_chess_batch_data.py",
             name="your_spark_job_name",
             conn_id="spark_default",
             application_args=[
                 "--input_path",
-                "{{ ti.xcom_pull(task_ids='Extract_Preprocess.convert_pgn_zst_to_csv_format') }}",
-                # f"gs://{STORAGE_BUCKET_NAME}/{CONVERTED_CSV_FILE_NAME}",
+                "{{ ti.xcom_pull(task_ids='Extract_Preprocess_Upload.upload_csv_to_gcs') }}",
             ],
             conf={
                 "spark.jars": "/opt/airflow/spark-lib/gcs-connector-hadoop3-2.2.21-shaded.jar",
@@ -156,9 +171,9 @@ with DAG(
                 "spark.executor.memory": "2g",
             },
         )
-        transform_task
+        spark_transform_task
 
-    with TaskGroup(group_id="Load") as load_tasks:
+    with TaskGroup(group_id="Load") as populate_dw_tasks:
 
         load_bigquery_table = PythonOperator(
             task_id="load_parquet_to_bigquery_custom",
@@ -171,4 +186,4 @@ with DAG(
         )
         load_bigquery_table
 
-    extract_load_tasks >> transform_task >> load_tasks
+    extract_preprocess_upload_tasks >> transform_tasks >> populate_dw_tasks

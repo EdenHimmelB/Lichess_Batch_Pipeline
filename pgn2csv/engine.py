@@ -31,7 +31,7 @@ class PGNParser:
         match_record = Match()
 
         with subprocess.Popen(
-            ["pzstd", "-dc", self.file_path], stdout=subprocess.PIPE
+            ["pzstd", "-dc", "--rm", self.file_path], stdout=subprocess.PIPE
         ) as proc:
             for line in proc.stdout:
                 decoded_line = line.decode()
