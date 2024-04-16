@@ -8,28 +8,13 @@ RUN pip install -r requirements.txt --no-cache-dir
 
 USER root
 RUN mkdir -p /opt/airflow/spark-lib
-
-# Install necessary packages
 RUN apt-get update && \
-    apt-get install -y ntp openjdk-17-jre zstd && \
-    # Clean up the apt cache to reduce image size
+    apt-get install -y openjdk-17-jre zstd && \
+    # Delete apt cache to reduce image size
     rm -rf /var/lib/apt/lists/*
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 RUN export JAVA_HOME
 
-# Download GCS Connector for Spark
+# Download GCS Connector so that Airflow can distribute them to Spark nodes during spark job submission.
 ADD https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/hadoop3-2.2.21/gcs-connector-hadoop3-2.2.21-shaded.jar /opt/airflow/spark-lib
-
-# Long running airflow job may cause "Could not read served logs: Client error '403 FORBIDDEN'", install and config ntp server to address this issue.
-# Configure NTP by setting preferred servers
-RUN echo "server 0.pool.ntp.org iburst" > /etc/ntp.conf && \
-    echo "server 1.pool.ntp.org iburst" >> /etc/ntp.conf && \
-    echo "server 2.pool.ntp.org iburst" >> /etc/ntp.conf && \
-    echo "server 3.pool.ntp.org iburst" >> /etc/ntp.conf
-
-# Ensure NTP starts and set the clock immediately
-RUN service ntp start && \
-    ntpd -gq && \
-    service ntp stop && \
-    service ntp start

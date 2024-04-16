@@ -62,13 +62,6 @@ resource "google_storage_bucket" "production_bucket" {
   }
 }
 
-resource "google_storage_bucket_object" "empty_folder" {
-  name       = var.standard_games_folder
-  content    = " " # content is ignored but should be non-empty
-  bucket     = var.gcs_bucket_name
-  depends_on = [google_storage_bucket.production_bucket]
-}
-
 resource "google_bigquery_dataset" "dataset" {
   dataset_id = var.bigquery_dataset
   project    = var.project

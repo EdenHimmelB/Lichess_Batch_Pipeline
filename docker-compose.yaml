@@ -85,9 +85,10 @@ x-airflow-common:
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/spark-jobs:/opt/airflow/spark-jobs
-    - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/logs:/opt/airflow/logs
     - ./pgn2csv:/opt/pgn2csv
+    - ./data:/opt/data
   user: root
   depends_on: &airflow-common-depends-on
     redis:
@@ -335,9 +336,6 @@ services:
   # Apache Spark Setup
   spark-master:
     image: spark:3.5.1-python3
-    # image: spark:3.4.1
-    # build:
-    #   dockerfile: Dockerfile.spark
     working_dir: /opt/spark
     command: /bin/bash -c "bin/spark-class org.apache.spark.deploy.master.Master -h spark-master.com"
     hostname: spark-master.com
@@ -351,16 +349,10 @@ services:
 
   spark-worker:
     image: spark:3.5.1-python3
-    # image: spark:3.4.1
-    # build:
-    #   dockerfile: Dockerfile.spark
     working_dir: /opt/spark
     command: /bin/bash -c "bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master.com:7077"
     environment:
       SPARK_WORKER_CORES: 8
-      # SPARK_WORKER_MEMORY: 2g
-      # SPARK_DRIVER_MEMORY: 512m
-      # SPARK_EXECUTOR_MEMORY: 512m
       SPARK_LOCAL_IP: spark-worker
     depends_on:
       - spark-master

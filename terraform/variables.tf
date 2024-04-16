@@ -40,10 +40,6 @@ variable "gcs_bucket_name" {
   default     = "chess_object_storage_769413"
 }
 
-variable "standard_games_folder" {
-  description = "GCS folder for chess standard games."
-  default     = "standard_games/"
-}
 
 variable "bigquery_dataset" {
   description = "BigQuery Dataset that raw data (from GCS) will be written to."
