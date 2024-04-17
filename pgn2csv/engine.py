@@ -87,7 +87,7 @@ class CSVWriter:
             csv_writer = csv.writer(csv_file, quotechar='"', quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerow(
                 [
-                    "GameID",
+                    # "GameID",
                     "Event",
                     "Site",
                     "Date",
@@ -118,7 +118,7 @@ class CSVWriter:
                     break
                 csv_writer.writerow(
                     [
-                        match_record.game_id,
+                        # match_record.game_id,
                         match_record.event,
                         match_record.site,
                         match_record.date,
