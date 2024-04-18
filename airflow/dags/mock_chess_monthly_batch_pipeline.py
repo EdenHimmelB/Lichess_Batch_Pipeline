@@ -92,7 +92,7 @@ default_args = {
 }
 
 with DAG(
-    dag_id="lichess_batch_pipeline",
+    dag_id="mock_lichess_batch_pipeline",
     default_args=default_args,
     description="Download standard games from Lichess database, parse, populate DWH and other tools for downstream users",
     schedule_interval="0 8 1 * *",  # Run at 08:00 every month at day 1
