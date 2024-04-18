@@ -88,7 +88,7 @@ x-airflow-common:
     - ./airflow/plugins:/opt/airflow/plugins
     - ./airflow/logs:/opt/airflow/logs
     - ./pgn2csv:/opt/pgn2csv
-    - ./data:/opt/data
+    - shared-data-volume:/opt/data
   user: root
   depends_on: &airflow-common-depends-on
     redis:
@@ -346,6 +346,8 @@ services:
       - "9090:8080" # Spark Master UI
     networks:
       - airflow_spark_network
+    volumes:
+      - shared-data-volume:/opt/data
 
   spark-worker:
     image: spark:3.5.1-python3
@@ -360,10 +362,18 @@ services:
       - "8081:8081" # Spark Worker UI
     networks:
       - airflow_spark_network
+    volumes:
+      - shared-data-volume:/opt/data
 
 volumes:
   postgres-db-volume:
   airflow-volume:
+  shared-data-volume:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ./data
   redis_data:
     external: false
 
