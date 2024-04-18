@@ -14,7 +14,7 @@ from pypdl import Downloader
 
 BASE_YEAR = datetime.now().strftime("%Y")
 BASE_MONTH = (datetime.now() - relativedelta(months=1)).strftime("%m")
-BASE_URL = f"https://database.lichess.org/standard/lichess_db_standard_rated_{BASE_YEAR}-{BASE_MONTH}.pgn.zst"
+BASE_URL = f"https://storage.googleapis.com/chess_raw_data_2024/chess_rated_games_partial.pgn.zst"
 
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
