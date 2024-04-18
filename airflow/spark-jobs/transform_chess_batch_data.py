@@ -7,12 +7,11 @@ from pyspark.sql.types import (
     FloatType,
     StringType,
     ArrayType,
-    TimestampType,
 )
 import argparse
 
 spark: SparkSession = (
-    SparkSession.builder.master("local[8]")
+    SparkSession.builder.master("local[*]")
     .appName("CSV to Parquet Conversion")
     .getOrCreate()
 )
@@ -95,9 +94,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input_path", type=str, help="name of the csv file which needs be converted"
     )
+    parser.add_argument(
+        "--output_path", type=str, help="location of the output file on the cloud"
+    )
     args = parser.parse_args()
     input_path = args.input_path
-    output_path = input_path.split(".")[0]
+    output_path = args.output_path
     transform_chess_data(input_path=input_path, output_path=output_path)
 
     spark.stop()
