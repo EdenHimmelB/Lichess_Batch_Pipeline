@@ -1,6 +1,6 @@
 variable "project" {
   description = "Your GCP Project ID"
-  default     = "data-engineering-starter"
+  default     = "<your-gcp-project-id>" # update here
 }
 
 variable "region" {
