@@ -27,7 +27,7 @@ class PGNParser:
         self._consecutive_non_tag_lines = 0
 
     def parse_pgn(self, processing_queue: JoinableQueue) -> None:
-
+        previous_match_record = None
         match_record = Match()
 
         with subprocess.Popen(
