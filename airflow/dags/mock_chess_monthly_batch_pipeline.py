@@ -1,20 +1,20 @@
-import os, subprocess
+import os
+import subprocess
 from datetime import datetime, timedelta
+
 from dateutil.relativedelta import relativedelta
+from pypdl import Downloader
 
 from airflow import DAG
-from airflow.utils.task_group import TaskGroup
-from airflow.utils.dates import days_ago
 from airflow.operators.python import PythonOperator
-
-from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-
-from pypdl import Downloader
+from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
+from airflow.utils.dates import days_ago
+from airflow.utils.task_group import TaskGroup
 
 BASE_YEAR = datetime.now().strftime("%Y")
 BASE_MONTH = (datetime.now() - relativedelta(months=1)).strftime("%m")
-BASE_URL = f"https://storage.googleapis.com/chess_raw_data_2024/chess_rated_games_partial.pgn.zst"
+BASE_URL = "https://storage.googleapis.com/chess_raw_data_2024/chess_rated_games_partial.pgn.zst"
 
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
