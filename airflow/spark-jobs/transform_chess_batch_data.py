@@ -1,14 +1,15 @@
-from pyspark.sql import SparkSession
+import argparse
+
 import pyspark.sql.functions as F
+from pyspark.sql import SparkSession
 from pyspark.sql.types import (
+    ArrayType,
+    FloatType,
+    IntegerType,
+    StringType,
     StructField,
     StructType,
-    IntegerType,
-    FloatType,
-    StringType,
-    ArrayType,
 )
-import argparse
 
 spark: SparkSession = (
     SparkSession.builder.master("local[*]")
